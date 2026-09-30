@@ -189,4 +189,35 @@ export const api = {
       auth: true,
     }),
   overview: () => request<ToolProgress[]>("/api/progress", { auth: true }),
+
+  adminReload: () =>
+    request<{ tools: number; lessons: number }>("/api/admin/content/reload", { method: "POST", auth: true }),
+  adminCreateTool: (body: {
+    slug: string;
+    name: string;
+    description: string;
+    category: string;
+    logoUrl?: string;
+  }) => request<{ path: string }>("/api/admin/tools", { method: "POST", body, auth: true }),
+  adminCreateModule: (slug: string, body: { title: string; description?: string }) =>
+    request<{ path: string }>(`/api/admin/tools/${encodeURIComponent(slug)}/modules`, {
+      method: "POST",
+      body,
+      auth: true,
+    }),
+  adminCreateLesson: (
+    moduleId: string,
+    body: { title: string; estimatedTime?: number; youtubeUrl?: string; content: string },
+  ) =>
+    request<{ path: string }>(`/api/admin/modules/${encodeURIComponent(moduleId)}/lessons`, {
+      method: "POST",
+      body,
+      auth: true,
+    }),
+  adminCreateExercise: (moduleId: string, body: { title: string; description: string }) =>
+    request<{ path: string }>(`/api/admin/modules/${encodeURIComponent(moduleId)}/exercises`, {
+      method: "POST",
+      body,
+      auth: true,
+    }),
 };

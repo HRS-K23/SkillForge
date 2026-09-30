@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
-import { clearSession, setSession } from "@/lib/session";
+import { clearSession, requireAdmin, setSession } from "@/lib/session";
 
 export type FormState = { error?: string; success?: string; values?: Record<string, string> };
 
@@ -65,4 +65,71 @@ export async function setCompletedAction(data: FormData) {
   }
   if (back.startsWith("/")) revalidatePath(back);
   revalidatePath("/progress");
+}
+
+async function adminRun(work: () => Promise<string>): Promise<FormState> {
+  await requireAdmin();
+  try {
+    const success = await work();
+    revalidatePath("/", "layout");
+    return { success };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) redirect("/login");
+    return fail(e);
+  }
+}
+
+const optional = (data: FormData, key: string) => str(data, key) || undefined;
+
+export async function reloadContentAction(): Promise<FormState> {
+  return adminRun(async () => {
+    const r = await api.adminReload();
+    return `Reloaded: ${r.tools} tools, ${r.lessons} lessons.`;
+  });
+}
+
+export async function createToolAction(_: FormState, data: FormData): Promise<FormState> {
+  return adminRun(async () => {
+    await api.adminCreateTool({
+      slug: str(data, "slug"),
+      name: str(data, "name"),
+      description: str(data, "description"),
+      category: str(data, "category"),
+      logoUrl: optional(data, "logoUrl"),
+    });
+    return "Tool created.";
+  });
+}
+
+export async function createModuleAction(_: FormState, data: FormData): Promise<FormState> {
+  return adminRun(async () => {
+    await api.adminCreateModule(str(data, "slug"), {
+      title: str(data, "title"),
+      description: optional(data, "description"),
+    });
+    return "Module added.";
+  });
+}
+
+export async function createLessonAction(_: FormState, data: FormData): Promise<FormState> {
+  return adminRun(async () => {
+    const minutes = optional(data, "estimatedTime");
+    await api.adminCreateLesson(str(data, "moduleId"), {
+      title: str(data, "title"),
+      estimatedTime: minutes === undefined ? undefined : Number(minutes),
+      youtubeUrl: optional(data, "youtubeUrl"),
+      content: String(data.get("content") ?? ""),
+    });
+    return "Lesson added.";
+  });
+}
+
+export async function createExerciseAction(_: FormState, data: FormData): Promise<FormState> {
+  return adminRun(async () => {
+    await api.adminCreateExercise(str(data, "moduleId"), {
+      title: str(data, "title"),
+      description: String(data.get("description") ?? ""),
+    });
+    return "Exercise added.";
+  });
 }

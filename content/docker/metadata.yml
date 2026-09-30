@@ -1,0 +1,5 @@
+name: Docker
+description: Package and run applications in containers.
+category: DevOps
+pathTitle: Docker for Beginners
+pathDescription: Run, build and share containers.
