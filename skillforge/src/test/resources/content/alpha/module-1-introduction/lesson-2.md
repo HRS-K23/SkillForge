@@ -1,0 +1,1 @@
+Second lesson without frontmatter.

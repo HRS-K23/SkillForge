@@ -1,0 +1,1 @@
+ALTER TABLE lessons ADD COLUMN search_text VARCHAR(100000);
