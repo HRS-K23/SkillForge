@@ -2,6 +2,7 @@ package com.project.skillforge.admin;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -51,8 +52,10 @@ class AdminAuthoringTests {
     }
 
     private String token(String email) throws Exception {
-        String res = mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"A\",\"email\":\"" + email + "\",\"password\":\"password123\"}"))
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"A\",\"email\":\"" + email + "\",\"password\":\"password123\"}"));
+        String res = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"password123\"}"))
                 .andReturn().getResponse().getContentAsString();
         Matcher m = Pattern.compile("\"accessToken\":\"([^\"]+)\"").matcher(res);
         m.find();
@@ -103,5 +106,13 @@ class AdminAuthoringTests {
     void learnersCannotAuthor() throws Exception {
         send(token("plain@example.com"), "/api/admin/tools", "{\"slug\":\"x\",\"name\":\"x\",\"description\":\"d\","
                 + "\"category\":\"c\"}", 403);
+    }
+
+    @Test
+    void lastAdministratorCannotDeleteTheirAccount() throws Exception {
+        String admin = token("author@example.com");
+        mvc.perform(delete("/api/users/me").header("Authorization", admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"password123\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("LAST_ADMIN"));
     }
 }

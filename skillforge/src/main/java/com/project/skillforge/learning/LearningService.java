@@ -53,7 +53,7 @@ public class LearningService {
                                 .map(l -> new LessonSummary(l.getId(), l.getTitle(), l.getEstimatedTime(),
                                         l.getSortOrder()))
                                 .toList(),
-                        exercises.findByModuleIdOrderByTitle(m.getId()).stream()
+                        exercises.findByModuleIdOrderBySortOrderAscTitleAsc(m.getId()).stream()
                                 .map(e -> new ExerciseResponse(e.getId(), e.getTitle(), e.getDescription()))
                                 .toList()))
                 .toList();

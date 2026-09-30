@@ -11,6 +11,7 @@ public class Exercise {
     @Column(name = "file_name", nullable = false, length = 200) private String fileName;
     @Column(nullable = false, length = 200) private String title;
     @Column(nullable = false, length = 4000) private String description;
+    @Column(name = "sort_order", nullable = false) private int sortOrder;
 
     protected Exercise() {}
 
@@ -20,9 +21,10 @@ public class Exercise {
         this.fileName = fileName;
     }
 
-    public void update(String title, String description) {
+    public void update(String title, String description, int sortOrder) {
         this.title = title;
         this.description = description;
+        this.sortOrder = sortOrder;
     }
 
     public UUID getId() { return id; }
@@ -30,4 +32,5 @@ public class Exercise {
     public String getFileName() { return fileName; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
+    public int getSortOrder() { return sortOrder; }
 }

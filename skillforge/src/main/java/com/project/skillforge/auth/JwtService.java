@@ -33,6 +33,7 @@ public class JwtService {
                 .issuedAt(now)
                 .expiresAt(now.plus(ttl))
                 .claim("role", user.getRole().name())
+                .claim("tv", user.getTokenVersion())
                 .build();
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
                 .getTokenValue();

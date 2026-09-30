@@ -13,10 +13,12 @@ public class AuthController {
 
     private final UserService users;
     private final JwtService jwt;
+    private final PasswordResetService resets;
 
-    public AuthController(UserService users, JwtService jwt) {
+    public AuthController(UserService users, JwtService jwt, PasswordResetService resets) {
         this.users = users;
         this.jwt = jwt;
+        this.resets = resets;
     }
 
     @PostMapping("/register")
@@ -28,6 +30,18 @@ public class AuthController {
     @PostMapping("/login")
     AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return toResponse(users.authenticate(request.email(), request.password()));
+    }
+
+    @PostMapping("/forgot-password")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    void forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        resets.request(request.email());
+    }
+
+    @PostMapping("/reset-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        resets.reset(request.token(), request.newPassword());
     }
 
     private AuthResponse toResponse(User user) {

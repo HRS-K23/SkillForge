@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
-import { clearSession, requireAdmin, setSession } from "@/lib/session";
+import { clearSession, endSessionOn401, requireAdmin, requireUser, setSession } from "@/lib/session";
 
 export type FormState = { error?: string; success?: string; values?: Record<string, string> };
 
@@ -12,6 +12,11 @@ const str = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 function fail(e: unknown): FormState {
   if (e instanceof ApiError) return { error: e.display };
   return { error: "Something went wrong. Please try again." };
+}
+
+function failAuthed(e: unknown): FormState {
+  endSessionOn401(e);
+  return fail(e);
 }
 
 export async function loginAction(_: FormState, data: FormData): Promise<FormState> {
@@ -47,7 +52,7 @@ export async function updateProfileAction(_: FormState, data: FormData): Promise
   try {
     await api.updateMe(str(data, "name"));
   } catch (e) {
-    return fail(e);
+    return failAuthed(e);
   }
   revalidatePath("/", "layout");
   return { success: "Profile updated." };
@@ -60,7 +65,7 @@ export async function setCompletedAction(data: FormData) {
   try {
     await api.setCompleted(lessonId, completed);
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401) redirect("/login");
+    endSessionOn401(e);
     throw e;
   }
   if (back.startsWith("/")) revalidatePath(back);
@@ -74,8 +79,7 @@ async function adminRun(work: () => Promise<string>): Promise<FormState> {
     revalidatePath("/", "layout");
     return { success };
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401) redirect("/login");
-    return fail(e);
+    return failAuthed(e);
   }
 }
 

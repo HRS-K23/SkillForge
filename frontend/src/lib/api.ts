@@ -142,7 +142,8 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
     }
     throw new ApiError(res.status, code, message, details);
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 const qs = (params: Record<string, string | undefined>) => {
@@ -176,7 +177,18 @@ export const api = {
     }),
   me: () => request<User>("/api/users/me", { auth: true }),
   updateMe: (name: string) =>
-    request<User>("/api/users/me", { method: "PUT", body: { name }, auth: true }),
+    request<User>("/api/users/me", { method: "PUT", body: { name }, auth: true }),  changePassword: (currentPassword: string, newPassword: string) =>
+    request<AuthResponse>("/api/users/me/password", {
+      method: "PUT",
+      body: { currentPassword, newPassword },
+      auth: true,
+    }),
+  deleteAccount: (password: string) =>
+    request<void>("/api/users/me", { method: "DELETE", body: { password }, auth: true }),
+  forgotPassword: (email: string) =>
+    request<void>("/api/auth/forgot-password", { method: "POST", body: { email } }),
+  resetPassword: (token: string, newPassword: string) =>
+    request<void>("/api/auth/reset-password", { method: "POST", body: { token, newPassword } }),
 
   setCompleted: (lessonId: string, completed: boolean) =>
     request<LessonProgress>(`/api/progress/lessons/${encodeURIComponent(lessonId)}`, {
@@ -220,4 +232,31 @@ export const api = {
       body,
       auth: true,
     }),
+  adminUpdateTool: (
+    slug: string,
+    body: { name: string; description: string; category: string; logoUrl?: string },
+  ) => request<{ path: string }>(`/api/admin/tools/${encodeURIComponent(slug)}`, { method: "PUT", body, auth: true }),
+  adminDeleteTool: (slug: string) =>
+    request<void>(`/api/admin/tools/${encodeURIComponent(slug)}`, { method: "DELETE", auth: true }),
+  adminUpdateModule: (id: string, body: { title: string; description?: string }) =>
+    request<{ path: string }>(`/api/admin/modules/${encodeURIComponent(id)}`, { method: "PUT", body, auth: true }),
+  adminDeleteModule: (id: string) =>
+    request<void>(`/api/admin/modules/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
+  adminUpdateLesson: (
+    id: string,
+    body: { title: string; estimatedTime?: number; youtubeUrl?: string; content: string },
+  ) => request<{ path: string }>(`/api/admin/lessons/${encodeURIComponent(id)}`, { method: "PUT", body, auth: true }),
+  adminDeleteLesson: (id: string) =>
+    request<void>(`/api/admin/lessons/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
+  adminUpdateExercise: (id: string, body: { title: string; description: string }) =>
+    request<{ path: string }>(`/api/admin/exercises/${encodeURIComponent(id)}`, { method: "PUT", body, auth: true }),
+  adminDeleteExercise: (id: string) =>
+    request<void>(`/api/admin/exercises/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
+  adminReorder: (kind: "modules" | "lessons" | "exercises", parent: string, ids: string[]) =>
+    request<void>(
+      kind === "modules"
+        ? `/api/admin/tools/${encodeURIComponent(parent)}/modules/order`
+        : `/api/admin/modules/${encodeURIComponent(parent)}/${kind}/order`,
+      { method: "PUT", body: { ids }, auth: true },
+    ),
 };

@@ -1,6 +1,7 @@
 package com.project.skillforge.shared.content;
 
 import java.util.Map;
+import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /** Splits a Markdown document into YAML frontmatter and body. */
@@ -27,6 +28,18 @@ public record FrontMatter(Map<String, Object> data, String body) {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Map<?, ?> m) {
         return (Map<String, Object>) m;
+    }
+
+    /** Serialises a map as block-style YAML. */
+    public static String dump(Map<String, Object> map) {
+        DumperOptions options = new DumperOptions();
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        options.setSplitLines(false);
+        return new Yaml(options).dump(map);
+    }
+
+    public static String render(Map<String, Object> data, String body) {
+        return "---\n" + dump(data) + "---\n" + body.strip() + "\n";
     }
 
     public String text(String key) {

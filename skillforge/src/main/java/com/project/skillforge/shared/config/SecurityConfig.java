@@ -1,5 +1,6 @@
 package com.project.skillforge.shared.config;
 
+import com.project.skillforge.auth.UserJwtConverter;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
@@ -15,13 +16,11 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
@@ -31,7 +30,7 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, UserJwtConverter jwtConverter) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -46,14 +45,29 @@ public class SecurityConfig {
                 .oauth2ResourceServer(o -> o
                         .authenticationEntryPoint(entryPoint())
                         .accessDeniedHandler(deniedHandler())
-                        .jwt(j -> j.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+                        .jwt(j -> j.jwtAuthenticationConverter(jwtConverter)))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .build();
     }
 
     private static AuthenticationEntryPoint entryPoint() {
-        return (req, res, ex) -> writeError(res, 401, "UNAUTHENTICATED", "Authentication is required");
+        return (req, res, ex) -> {
+            if (isExpired(ex)) {
+                writeError(res, 401, "TOKEN_EXPIRED", "Your session has expired. Please log in again.");
+            } else {
+                writeError(res, 401, "UNAUTHENTICATED", "Authentication is required");
+            }
+        };
+    }
+
+    private static boolean isExpired(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t.getMessage() != null && t.getMessage().contains("Jwt expired")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static AccessDeniedHandler deniedHandler() {
@@ -91,12 +105,4 @@ public class SecurityConfig {
     JwtDecoder jwtDecoder(SecretKey key) {
         return NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
     }
-
-    private JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(jwt ->
-                java.util.List.of(new SimpleGrantedAuthority("ROLE_" + jwt.getClaimAsString("role"))));
-        return converter;
-    }
 }
-
