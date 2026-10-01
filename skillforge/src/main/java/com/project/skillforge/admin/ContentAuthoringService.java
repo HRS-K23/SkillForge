@@ -24,7 +24,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -47,6 +46,12 @@ public class ContentAuthoringService {
 
     private static final Pattern MODULE_DIR = Pattern.compile("module-(\\d+)-.+");
     private static final Pattern NUMBERED = Pattern.compile("(?:lesson|exercise)-(\\d+)\\.md");
+    private static final String TOOL_NOT_FOUND_CODE = "TOOL_NOT_FOUND";
+    private static final String TOOL_NOT_FOUND_MESSAGE = "Tool not found";
+    private static final String MODULE_YML = "module.yml";
+    private static final String DESCRIPTION = "description";
+    private static final String TITLE = "title";
+    private static final String ORDER = "order";
 
     private final Path root;
     private final ToolRepository tools;
@@ -93,7 +98,7 @@ public class ContentAuthoringService {
 
     public synchronized void deleteTool(String slug) {
         Tool tool = tools.findBySlug(slug)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TOOL_NOT_FOUND", "Tool not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, TOOL_NOT_FOUND_CODE, TOOL_NOT_FOUND_MESSAGE));
         deleteTree(contained(root.resolve(slug)));
         tools.delete(tool);
         reloader.reload();
@@ -102,7 +107,7 @@ public class ContentAuthoringService {
     private static Map<String, Object> toolMeta(Map<String, Object> meta, String name, String description,
                                                 String category, String logoUrl) {
         meta.put("name", name.trim());
-        meta.put("description", description.trim());
+        meta.put(DESCRIPTION, description.trim());
         meta.put("category", category.trim());
         putOrRemove(meta, "logoUrl", blankToNull(logoUrl));
         return meta;
@@ -119,19 +124,19 @@ public class ContentAuthoringService {
                 .orElse(0) + 1;
         String folder = "module-" + (maxNumber(toolDir, MODULE_DIR, true) + 1) + "-" + slugify(title);
         Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("title", title.trim());
-        putOrRemove(meta, "description", blankToNull(description));
-        meta.put("order", order);
-        write(toolDir.resolve(folder).resolve("module.yml"), FrontMatter.dump(meta));
+        meta.put(TITLE, title.trim());
+        putOrRemove(meta, DESCRIPTION, blankToNull(description));
+        meta.put(ORDER, order);
+        write(toolDir.resolve(folder).resolve(MODULE_YML), FrontMatter.dump(meta));
         reloader.reload();
         return new Written(slug + "/" + folder);
     }
 
     public synchronized Written updateModule(UUID moduleId, String title, String description) {
-        Path file = moduleDir(moduleId).resolve("module.yml");
+        Path file = moduleDir(moduleId).resolve(MODULE_YML);
         Map<String, Object> meta = readYaml(file);
-        meta.put("title", title.trim());
-        putOrRemove(meta, "description", blankToNull(description));
+        meta.put(TITLE, title.trim());
+        putOrRemove(meta, DESCRIPTION, blankToNull(description));
         overwrite(file, FrontMatter.dump(meta));
         reloader.reload();
         return new Written(relative(file));
@@ -144,7 +149,7 @@ public class ContentAuthoringService {
 
     public synchronized void reorderModules(String slug, List<UUID> ids) {
         Tool tool = tools.findBySlug(slug)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TOOL_NOT_FOUND", "Tool not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, TOOL_NOT_FOUND_CODE, TOOL_NOT_FOUND_MESSAGE));
         Path toolDir = toolDir(slug);
         List<LearningModule> current = paths.findByToolId(tool.getId())
                 .map(p -> modules.findByLearningPathIdOrderBySortOrder(p.getId())).orElse(List.of());
@@ -152,9 +157,9 @@ public class ContentAuthoringService {
         Map<UUID, LearningModule> byId = new LinkedHashMap<>();
         current.forEach(m -> byId.put(m.getId(), m));
         for (int i = 0; i < ids.size(); i++) {
-            Path file = contained(toolDir.resolve(byId.get(ids.get(i)).getFolder()).resolve("module.yml"));
+            Path file = contained(toolDir.resolve(byId.get(ids.get(i)).getFolder()).resolve(MODULE_YML));
             Map<String, Object> meta = readYaml(file);
-            meta.put("order", i + 1);
+            meta.put(ORDER, i + 1);
             overwrite(file, FrontMatter.dump(meta));
         }
         reloader.reload();
@@ -170,8 +175,8 @@ public class ContentAuthoringService {
                 .mapToInt(Lesson::getSortOrder).max().orElse(0) + 1;
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("id", UUID.randomUUID().toString());
-        meta.put("title", title.trim());
-        meta.put("order", order);
+        meta.put(TITLE, title.trim());
+        meta.put(ORDER, order);
         putOrRemove(meta, "estimatedTime", estimatedTime);
         putOrRemove(meta, "youtubeUrl", blankToNull(youtubeUrl));
         String file = "lesson-" + n + ".md";
@@ -185,7 +190,7 @@ public class ContentAuthoringService {
         Lesson lesson = lesson(lessonId);
         Path file = lessonFile(lesson);
         Map<String, Object> meta = readFrontMatter(file);
-        meta.put("title", title.trim());
+        meta.put(TITLE, title.trim());
         putOrRemove(meta, "estimatedTime", estimatedTime);
         putOrRemove(meta, "youtubeUrl", blankToNull(youtubeUrl));
         overwrite(file, FrontMatter.render(withId(meta, lesson.getId()), content));
@@ -209,7 +214,7 @@ public class ContentAuthoringService {
             Path file = lessonFile(lesson);
             FrontMatter fm = parseFile(file);
             Map<String, Object> meta = new LinkedHashMap<>(fm.data());
-            meta.put("order", i + 1);
+            meta.put(ORDER, i + 1);
             overwrite(file, FrontMatter.render(withId(meta, lesson.getId()), fm.body()));
         }
         reloader.reload();
@@ -223,8 +228,8 @@ public class ContentAuthoringService {
         int order = exercises.findByModuleIdOrderBySortOrderAscTitleAsc(moduleId).stream()
                 .mapToInt(Exercise::getSortOrder).max().orElse(0) + 1;
         Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("title", title.trim());
-        meta.put("order", order);
+        meta.put(TITLE, title.trim());
+        meta.put(ORDER, order);
         String file = "exercise-" + n + ".md";
         write(dir.resolve(file), FrontMatter.render(meta, description));
         reloader.reload();
@@ -234,7 +239,7 @@ public class ContentAuthoringService {
     public synchronized Written updateExercise(UUID exerciseId, String title, String description) {
         Path file = exerciseFile(exercise(exerciseId));
         Map<String, Object> meta = readFrontMatter(file);
-        meta.put("title", title.trim());
+        meta.put(TITLE, title.trim());
         overwrite(file, FrontMatter.render(meta, description));
         reloader.reload();
         return new Written(relative(file));
@@ -255,7 +260,7 @@ public class ContentAuthoringService {
             Path file = exerciseFile(byId.get(ids.get(i)));
             FrontMatter fm = parseFile(file);
             Map<String, Object> meta = new LinkedHashMap<>(fm.data());
-            meta.put("order", i + 1);
+            meta.put(ORDER, i + 1);
             overwrite(file, FrontMatter.render(meta, fm.body()));
         }
         reloader.reload();
@@ -291,7 +296,7 @@ public class ContentAuthoringService {
 
     private Path toolDir(String slug) {
         if (tools.findBySlug(slug).isEmpty()) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "TOOL_NOT_FOUND", "Tool not found");
+            throw new ApiException(HttpStatus.NOT_FOUND, TOOL_NOT_FOUND_CODE, TOOL_NOT_FOUND_MESSAGE);
         }
         return contained(root.resolve(slug));
     }
@@ -301,7 +306,7 @@ public class ContentAuthoringService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MODULE_NOT_FOUND", "Module not found"));
         String slug = paths.findById(module.getLearningPathId())
                 .flatMap(p -> tools.findById(p.getToolId())).map(Tool::getSlug)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TOOL_NOT_FOUND", "Tool not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, TOOL_NOT_FOUND_CODE, TOOL_NOT_FOUND_MESSAGE));
         Path dir = contained(root.resolve(slug).resolve(module.getFolder()));
         if (!Files.isDirectory(dir)) {
             throw new ApiException(HttpStatus.CONFLICT, "CONTENT_OUT_OF_SYNC",
@@ -441,9 +446,55 @@ public class ContentAuthoringService {
     }
 
     static String slugify(String title) {
-        String s = Normalizer.normalize(title, Normalizer.Form.NFD).replaceAll("\\p{M}", "")
-                .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
-        s = s.length() > 60 ? s.substring(0, 60).replaceAll("-+$", "") : s;
+        String normalized = Normalizer.normalize(title, Normalizer.Form.NFD);
+        StringBuilder slug = new StringBuilder(normalized.length());
+        boolean lastWasDash = false;
+        for (int i = 0; i < normalized.length(); i++) {
+            lastWasDash = appendSlugCharacter(slug, normalized.charAt(i), lastWasDash);
+        }
+        String s = trimSlug(slug.toString());
         return s.isEmpty() ? "module" : s;
+    }
+
+    private static boolean appendSlugCharacter(StringBuilder slug, char c, boolean lastWasDash) {
+        if (isCombiningMark(c)) {
+            return lastWasDash;
+        }
+        c = normalizeLowercase(c);
+        if (isAsciiLetterOrDigit(c)) {
+            slug.append(c);
+            return false;
+        }
+        if (!lastWasDash) {
+            slug.append('-');
+            return true;
+        }
+        return true;
+    }
+
+    private static boolean isCombiningMark(char c) {
+        int type = Character.getType(c);
+        return type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK
+                || type == Character.ENCLOSING_MARK;
+    }
+
+    private static char normalizeLowercase(char c) {
+        return c >= 'A' && c <= 'Z' ? (char) (c + ('a' - 'A')) : c;
+    }
+
+    private static boolean isAsciiLetterOrDigit(char c) {
+        return c >= 'a' && c <= 'z' || c >= '0' && c <= '9';
+    }
+
+    private static String trimSlug(String s) {
+        String trimmed = s.startsWith("-") ? s.substring(1) : s;
+        trimmed = trimmed.endsWith("-") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+        if (trimmed.length() > 60) {
+            trimmed = trimmed.substring(0, 60);
+            if (trimmed.endsWith("-")) {
+                trimmed = trimmed.substring(0, trimmed.length() - 1);
+            }
+        }
+        return trimmed;
     }
 }
