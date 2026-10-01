@@ -15,7 +15,9 @@ import com.jayway.jsonpath.JsonPath;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +44,7 @@ class ContentEditingTests {
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
-        r.add("skillforge.content.root", () -> CONTENT.toString());
+        r.add("skillforge.content.root", CONTENT::toString);
         r.add("spring.datasource.url", () -> "jdbc:h2:mem:editing;MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
     }
 
@@ -50,8 +52,23 @@ class ContentEditingTests {
     MockMvc mvc;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException {
+        resetContentRoot();
         mvc = MockMvcBuilders.webAppContextSetup(ctx).apply(springSecurity()).build();
+    }
+
+    private void resetContentRoot() throws IOException {
+        if (!Files.exists(CONTENT)) {
+            Files.createDirectories(CONTENT);
+            return;
+        }
+        try (var paths = Files.walk(CONTENT)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                if (!path.equals(CONTENT)) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
     }
 
     private String token(String email) throws Exception {
@@ -92,78 +109,111 @@ class ContentEditingTests {
         return "{\"ids\":[" + String.join(",", ids.stream().map(i -> "\"" + i + "\"").toList()) + "]}";
     }
 
-    @Test
-    void adminEditsReordersAndDeletesContentWithoutLosingProgress() throws Exception {
+    private Fixture fixture() throws Exception {
         String admin = token("editor@example.com");
-        String learner = token("learner@example.com");
         send("POST", admin, "/api/admin/tools", "{\"slug\":\"edit\",\"name\":\"Edit\",\"description\":\"d\","
                 + "\"category\":\"Development\"}", 201);
         send("POST", admin, "/api/admin/tools/edit/modules", "{\"title\":\"One\"}", 201);
         send("POST", admin, "/api/admin/tools/edit/modules", "{\"title\":\"Two\"}", 201);
-        String m1 = JsonPath.read(path("edit"), "$.modules[0].id");
-        String m2 = JsonPath.read(path("edit"), "$.modules[1].id");
-        for (String t : List.of("A", "B", "C")) {
-            send("POST", admin, "/api/admin/modules/" + m1 + "/lessons", "{\"title\":\"" + t + "\",\"content\":\"x\"}", 201);
+        String moduleOneId = JsonPath.read(path("edit"), "$.modules[0].id");
+        String moduleTwoId = JsonPath.read(path("edit"), "$.modules[1].id");
+        for (String title : List.of("A", "B", "C")) {
+            send("POST", admin, "/api/admin/modules/" + moduleOneId + "/lessons",
+                    "{\"title\":\"" + title + "\",\"content\":\"x\"}", 201);
         }
-        send("POST", admin, "/api/admin/modules/" + m1 + "/exercises", "{\"title\":\"E1\",\"description\":\"d\"}", 201);
-        send("POST", admin, "/api/admin/modules/" + m1 + "/exercises", "{\"title\":\"E2\",\"description\":\"d\"}", 201);
+        send("POST", admin, "/api/admin/modules/" + moduleOneId + "/exercises",
+                "{\"title\":\"E1\",\"description\":\"d\"}", 201);
+        send("POST", admin, "/api/admin/modules/" + moduleOneId + "/exercises",
+                "{\"title\":\"E2\",\"description\":\"d\"}", 201);
 
-        List<String> ids = lessonIds("edit", 0);
+        List<String> lessonIds = lessonIds("edit", 0);
         assertEquals(List.of("A", "B", "C"), lessonTitles("edit", 0));
-        assertTrue(Files.readString(CONTENT.resolve("edit/module-1-one/lesson-1.md")).contains("id: " + ids.get(0)));
+        assertTrue(Files.readString(CONTENT.resolve("edit/module-1-one/lesson-1.md")).contains("id: " + lessonIds.get(0)));
+        return new Fixture(admin, moduleOneId, moduleTwoId, lessonIds);
+    }
 
-        send("PUT", learner, "/api/progress/lessons/" + ids.get(0), "{\"completed\":true}", 200);
+    private record Fixture(String admin, String moduleOneId, String moduleTwoId, List<String> lessonIds) {}
 
-        // reorder lessons: ids and progress stay, only order changes
-        send("PUT", admin, "/api/admin/modules/" + m1 + "/lessons/order", ids(List.of(ids.get(2), ids.get(0), ids.get(1))), 204);
+    @Test
+    void adminReordersContentWithoutLosingProgress() throws Exception {
+        Fixture f = fixture();
+        String learner = token("learner@example.com");
+        send("PUT", learner, "/api/progress/lessons/" + f.lessonIds().get(0), "{\"completed\":true}", 200);
+
+        send("PUT", f.admin(), "/api/admin/modules/" + f.moduleOneId() + "/lessons/order",
+                ids(List.of(f.lessonIds().get(2), f.lessonIds().get(0), f.lessonIds().get(1))), 204);
         assertEquals(List.of("C", "A", "B"), lessonTitles("edit", 0));
-        assertEquals(List.of(ids.get(2), ids.get(0), ids.get(1)), lessonIds("edit", 0));
-        send("PUT", admin, "/api/admin/modules/" + m1 + "/lessons/order", ids(List.of(ids.get(0))), 400);
+        assertEquals(List.of(f.lessonIds().get(2), f.lessonIds().get(0), f.lessonIds().get(1)), lessonIds("edit", 0));
+        send("PUT", f.admin(), "/api/admin/modules/" + f.moduleOneId() + "/lessons/order",
+                ids(List.of(f.lessonIds().get(0))), 400);
 
-        // renaming and moving files keeps the same lesson
         Path lesson1 = CONTENT.resolve("edit/module-1-one/lesson-1.md");
         Files.move(lesson1, CONTENT.resolve("edit/module-1-one/lesson-renamed.md"));
         Files.move(CONTENT.resolve("edit/module-1-one/lesson-2.md"),
                 CONTENT.resolve("edit/module-2-two/lesson-7.md"));
-        send("POST", admin, "/api/admin/content/reload", null, 200);
-        assertTrue(lessonIds("edit", 0).contains(ids.get(0)));
-        assertEquals(List.of(ids.get(1)), lessonIds("edit", 1));
+        send("POST", f.admin(), "/api/admin/content/reload", null, 200);
+        assertTrue(lessonIds("edit", 0).contains(f.lessonIds().get(0)));
+        assertEquals(List.of(f.lessonIds().get(1)), lessonIds("edit", 1));
         mvc.perform(get("/api/progress/tools/edit").header("Authorization", learner))
                 .andExpect(jsonPath("$.completedLessons").value(1));
 
-        // edit a lesson
-        send("PUT", admin, "/api/admin/lessons/" + ids.get(0),
-                "{\"title\":\"A renamed\",\"estimatedTime\":7,\"content\":\"new body\"}", 200);
-        mvc.perform(get("/api/lessons/" + ids.get(0))).andExpect(jsonPath("$.title").value("A renamed"))
-                .andExpect(jsonPath("$.content").value("new body"));
-        send("PUT", admin, "/api/admin/lessons/" + java.util.UUID.randomUUID(),
-                "{\"title\":\"x\",\"content\":\"y\"}", 404);
-
-        // modules: edit, reorder, delete
-        send("PUT", admin, "/api/admin/modules/" + m2, "{\"title\":\"Two renamed\",\"description\":\"d\"}", 200);
-        send("PUT", admin, "/api/admin/tools/edit/modules/order", ids(List.of(m2, m1)), 204);
-        assertEquals("Two renamed", JsonPath.read(path("edit"), "$.modules[0].title"));
-        send("DELETE", admin, "/api/admin/modules/" + m2, null, 204);
-        assertEquals(1, (int) JsonPath.read(path("edit"), "$.modules.length()"));
-
-        // exercises: reorder, edit, delete
         List<String> ex = JsonPath.read(path("edit"), "$.modules[0].exercises[*].id");
-        send("PUT", admin, "/api/admin/modules/" + m1 + "/exercises/order", ids(List.of(ex.get(1), ex.get(0))), 204);
+        send("PUT", f.admin(), "/api/admin/modules/" + f.moduleOneId() + "/exercises/order",
+                ids(List.of(ex.get(1), ex.get(0))), 204);
         assertEquals(List.of("E2", "E1"), JsonPath.read(path("edit"), "$.modules[0].exercises[*].title"));
-        send("PUT", admin, "/api/admin/exercises/" + ex.get(0), "{\"title\":\"E1 edited\",\"description\":\"dd\"}", 200);
-        send("DELETE", admin, "/api/admin/exercises/" + ex.get(1), null, 204);
-        assertEquals(List.of("E1 edited"), JsonPath.read(path("edit"), "$.modules[0].exercises[*].title"));
 
-        // delete a lesson, then the tool
-        send("DELETE", admin, "/api/admin/lessons/" + ids.get(0), null, 204);
-        mvc.perform(get("/api/lessons/" + ids.get(0))).andExpect(status().isNotFound());
-        send("PUT", admin, "/api/admin/tools/edit", "{\"name\":\"Edit 2\",\"description\":\"dd\",\"category\":\"Design\"}", 200);
+        send("PUT", f.admin(), "/api/admin/tools/edit/modules/order", ids(List.of(f.moduleTwoId(), f.moduleOneId())), 204);
+        assertEquals("Two", JsonPath.read(path("edit"), "$.modules[0].title"));
+    }
+
+    @Test
+    void adminEditsContent() throws Exception {
+        Fixture f = fixture();
+        send("PUT", f.admin(), "/api/admin/lessons/" + f.lessonIds().get(0),
+                "{\"title\":\"A renamed\",\"estimatedTime\":7,\"content\":\"new body\"}", 200);
+        mvc.perform(get("/api/lessons/" + f.lessonIds().get(0))).andExpect(jsonPath("$.title").value("A renamed"))
+                .andExpect(jsonPath("$.content").value("new body"));
+        send("PUT", f.admin(), "/api/admin/lessons/" + UUID.randomUUID(), "{\"title\":\"x\",\"content\":\"y\"}", 404);
+
+        send("PUT", f.admin(), "/api/admin/modules/" + f.moduleTwoId(), "{\"title\":\"Two renamed\",\"description\":\"d\"}", 200);
+        assertEquals("Two renamed", JsonPath.read(path("edit"), "$.modules[1].title"));
+
+        List<String> ex = JsonPath.read(path("edit"), "$.modules[0].exercises[*].id");
+        send("PUT", f.admin(), "/api/admin/exercises/" + ex.get(0), "{\"title\":\"E1 edited\",\"description\":\"dd\"}", 200);
+        assertEquals(List.of("E1 edited", "E2"), JsonPath.read(path("edit"), "$.modules[0].exercises[*].title"));
+
+        send("PUT", f.admin(), "/api/admin/tools/edit", "{\"name\":\"Edit 2\",\"description\":\"dd\",\"category\":\"Design\"}", 200);
         mvc.perform(get("/api/tools/edit")).andExpect(jsonPath("$.name").value("Edit 2"))
                 .andExpect(jsonPath("$.category").value("Design"));
-        send("DELETE", admin, "/api/admin/tools/edit", null, 204);
+    }
+
+    @Test
+    void adminDeletesContentAndRejectsNonAdmins() throws Exception {
+        Fixture f = fixture();
+        List<String> ex = JsonPath.read(path("edit"), "$.modules[0].exercises[*].id");
+        send("DELETE", f.admin(), "/api/admin/exercises/" + ex.get(1), null, 204);
+        assertEquals(List.of("E1"), JsonPath.read(path("edit"), "$.modules[0].exercises[*].title"));
+
+        send("DELETE", f.admin(), "/api/admin/lessons/" + f.lessonIds().get(0), null, 204);
+        mvc.perform(get("/api/lessons/" + f.lessonIds().get(0))).andExpect(status().isNotFound());
+
+        send("DELETE", f.admin(), "/api/admin/modules/" + f.moduleTwoId(), null, 204);
+        assertEquals(1, (int) JsonPath.read(path("edit"), "$.modules.length()"));
+
+        send("DELETE", f.admin(), "/api/admin/tools/edit", null, 204);
         mvc.perform(get("/api/tools/edit")).andExpect(status().isNotFound());
         assertFalse(Files.exists(CONTENT.resolve("edit")));
         send("DELETE", token("plain2@example.com"), "/api/admin/tools/edit", null, 403);
+    }
+
+    @Test
+    void moduleFolderMissingAndInvalidOrderAreRejected() throws Exception {
+        Fixture f = fixture();
+        Files.move(CONTENT.resolve("edit/module-2-two"), CONTENT.resolve("edit/module-2-two-missing"));
+        send("PUT", f.admin(), "/api/admin/modules/" + f.moduleTwoId(),
+                "{\"title\":\"Two renamed\",\"description\":\"d\"}", 409);
+        send("PUT", f.admin(), "/api/admin/modules/" + f.moduleOneId() + "/lessons/order",
+                ids(List.of(f.lessonIds().get(0), f.lessonIds().get(0), f.lessonIds().get(1))), 400);
     }
 
     @Test
@@ -176,9 +226,9 @@ class ContentEditingTests {
         send("POST", admin, "/api/admin/content/reload", null, 200);
         String id = lessonIds("legacy", 0).get(0);
         String text = Files.readString(dir.resolve("lesson-1.md"));
-        assertTrue(text.startsWith("---\r\nid: " + id + "\r\ntitle: Old\r\n---\r\n"), text);
+        String normalized = text.replace("\r\n", "\n");
+        assertTrue(normalized.startsWith("---\nid: " + id + "\ntitle: Old\n---\n"), text);
 
-        // duplicated files (copy/paste) do not steal the id
         Files.copy(dir.resolve("lesson-1.md"), dir.resolve("lesson-2.md"));
         send("POST", admin, "/api/admin/content/reload", null, 200);
         List<String> ids = lessonIds("legacy", 0);

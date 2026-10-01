@@ -29,8 +29,6 @@ class AuthFlowTests {
         mvc = MockMvcBuilders.webAppContextSetup(ctx).apply(springSecurity()).build();
     }
 
-    private String json(String body) { return body; }
-
     private String register(String email) throws Exception {
         String res = mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Ann\",\"email\":\"" + email + "\",\"password\":\"password123\"}"))

@@ -39,7 +39,7 @@ class AdminAuthoringTests {
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
-        r.add("skillforge.content.root", () -> CONTENT.toString());
+        r.add("skillforge.content.root", CONTENT::toString);
         r.add("spring.datasource.url", () -> "jdbc:h2:mem:authoring;MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
     }
 
