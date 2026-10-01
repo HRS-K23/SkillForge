@@ -1,4 +1,5 @@
 ---
+id: 4bf47176-c68b-45cf-8e93-30ee29b6ed7c
 title: Pages and blocks
 order: 2
 estimatedTime: 12

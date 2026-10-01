@@ -18,8 +18,13 @@ public class Lesson {
 
     protected Lesson() {}
 
-    public Lesson(UUID moduleId, String fileName, String contentPath) {
-        this.id = UUID.randomUUID();
+    public Lesson(UUID id, UUID moduleId, String fileName, String contentPath) {
+        this.id = id;
+        relocate(moduleId, fileName, contentPath);
+    }
+
+    /** Points the lesson at a new file location while keeping its identity (and learner progress). */
+    public void relocate(UUID moduleId, String fileName, String contentPath) {
         this.moduleId = moduleId;
         this.fileName = fileName;
         this.contentPath = contentPath;

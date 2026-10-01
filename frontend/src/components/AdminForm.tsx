@@ -14,6 +14,7 @@ export type AdminField = {
   maxLength?: number;
   min?: number;
   pattern?: string;
+  defaultValue?: string;
 };
 
 const inputClass =
@@ -54,7 +55,7 @@ export default function AdminForm({
           required: !f.optional,
           maxLength: f.maxLength,
           placeholder: f.placeholder,
-          defaultValue: state.values?.[f.name] ?? "",
+          defaultValue: state.values?.[f.name] ?? f.defaultValue ?? "",
           className: inputClass,
         };
         return (

@@ -1,4 +1,5 @@
 ---
+id: 3c4d4e1c-b68b-48e7-a455-938c60088ddc
 title: Planning a sprint
 order: 2
 estimatedTime: 12

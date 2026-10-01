@@ -58,8 +58,40 @@ public class UserService {
         return UserResponse.from(user);
     }
 
-    private User find(UUID id) {
-        return users.findById(id)
+    @Transactional
+    public User changePassword(UUID id, String currentPassword, String newPassword) {
+        User user = find(id);
+        requirePassword(user, currentPassword);
+        user.changePassword(encoder.encode(newPassword));
+        return user;
+    }
+
+    @Transactional
+    public void setPasswordFromReset(User user, String newPassword) {
+        user.changePassword(encoder.encode(newPassword));
+        users.save(user);
+    }
+
+    /** Soft delete: the row and its progress are kept, the account can no longer sign in. */
+    @Transactional
+    public void deleteAccount(UUID id, String password) {
+        User user = find(id);
+        requirePassword(user, password);
+        if (user.getRole() == User.Role.ADMIN
+                && users.countByRoleAndStatus(User.Role.ADMIN, User.Status.ACTIVE) <= 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "LAST_ADMIN",
+                    "The last administrator cannot delete their account");
+        }
+        user.softDelete();
+    }
+
+    private void requirePassword(User user, String rawPassword) {
+        if (!encoder.matches(rawPassword, user.getPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PASSWORD", "Current password is incorrect");
+        }
+    }
+
+    private User find(UUID id) {        return users.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found"));
     }
 }

@@ -1,4 +1,5 @@
 ---
+id: aa818e21-7d30-47b5-841b-bef7b46c48db
 title: Tour of the interface
 order: 2
 estimatedTime: 10

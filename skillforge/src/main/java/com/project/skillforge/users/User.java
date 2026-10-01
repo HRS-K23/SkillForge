@@ -10,7 +10,7 @@ public class User {
 
     public enum Role { LEARNER, ADMIN }
 
-    public enum Status { ACTIVE, DISABLED }
+    public enum Status { ACTIVE, DISABLED, DELETED }
 
     @Id
     private UUID id;
@@ -35,6 +35,12 @@ public class User {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     protected User() {}
 
     public User(String name, String email, String password, Role role) {
@@ -55,4 +61,18 @@ public class User {
     public Role getRole() { return role; }
     public Status getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
+    public int getTokenVersion() { return tokenVersion; }
+    public Instant getDeletedAt() { return deletedAt; }
+
+    /** Changes the password and invalidates every token issued before now. */
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+        this.tokenVersion++;
+    }
+
+    public void softDelete() {
+        this.status = Status.DELETED;
+        this.deletedAt = Instant.now();
+        this.tokenVersion++;
+    }
 }
