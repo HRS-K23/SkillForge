@@ -15,7 +15,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -294,8 +293,7 @@ public class LearningContentSync implements ApplicationRunner {
 
     private UUID assignNewLessonId(Candidate candidate, Map<String, Lesson> byLocation, Set<UUID> claimed) {
         Lesson atLocation = byLocation.get(candidate.module().getId() + "/" + candidate.fileName());
-        UUID id = atLocation != null && !claimed.contains(atLocation.getId()) ? atLocation.getId() : UUID.randomUUID();
-        return id;
+        return atLocation != null && !claimed.contains(atLocation.getId()) ? atLocation.getId() : UUID.randomUUID();
     }
 
     private void deleteStaleLessons(Map<UUID, Lesson> existing, List<Candidate> candidates, Set<UUID> protectedIds) {
