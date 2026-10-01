@@ -3,3 +3,5 @@
 /SRS.md
 /.env
 /.github
+*.env
+*.log

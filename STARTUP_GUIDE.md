@@ -145,3 +145,21 @@ After both services are running:
 3. Open `http://localhost:8080/swagger-ui.html` to inspect the API
 4. Try the login endpoint or a few protected endpoints
 
+## 10) Commands to check local host availability
+
+1. Check the connection -
+Get-NetTCPConnection -LocalPort 8080 -State Listen |
+  Select-Object LocalAddress, LocalPort, OwningProcess
+
+
+2. Use owning process value to identify the process:
+  ```Get-Process -Id <PID>```
+
+3. Stop the process:
+```Stop-Process -Id <PID> -Force```
+or 
+```Stop-Process -Id <PID>```
+
+If Dokcer owns the port then --
+docker ps --filter "publish=8080"
+docker stop <container-id>
