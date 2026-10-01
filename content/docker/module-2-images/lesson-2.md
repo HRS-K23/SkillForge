@@ -1,4 +1,5 @@
 ---
+id: 79105e1e-b13e-4e35-9c23-8fe759314367
 title: Building and tagging images
 order: 2
 estimatedTime: 10

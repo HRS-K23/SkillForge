@@ -9,5 +9,46 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skillforge -d skillforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Full stack: docker compose --profile app up --build   (JWT_SECRET is required, 32+ characters)
+  backend:
+    profiles: ["app"]
+    build: ./skillforge
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/skillforge
+      DB_USERNAME: skillforge
+      DB_PASSWORD: skillforge
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random string of at least 32 characters}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      CONTENT_ROOT: /content
+    volumes:
+      - ./content:/content
+    ports:
+      - "8080:8080"
+
+  frontend:
+    profiles: ["app"]
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8080
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8080
+      # Set to true when serving over HTTPS
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:
